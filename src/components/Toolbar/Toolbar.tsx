@@ -1,4 +1,4 @@
-import type { ToolType } from "../../hooks/useObjects";
+import type { ToolType } from "../../hooks/useFirestore";
 
 interface ToolbarProps {
   currentTool: ToolType;

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type Konva from "konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 
 interface ViewportState {

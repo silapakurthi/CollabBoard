@@ -125,10 +125,7 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
     if (currentTool === "select") setSelectedId(null);
   };
 
-  const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
-    if (e.target !== stageRef.current) return;
-    if (currentTool === "select") return;
-
+  const createObjectAtPointer = () => {
     const stage = stageRef.current;
     if (!stage) return;
     const ptr = stage.getPointerPosition();
@@ -158,6 +155,18 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
     addObject(newObject);
     setSelectedId(newObject.id);
     setCurrentTool("select");
+  };
+
+  const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
+    if (e.target !== stageRef.current) return;
+    if (currentTool === "select") return;
+    createObjectAtPointer();
+  };
+
+  const handleStageTap = (e: KonvaEventObject<TouchEvent>) => {
+    if (e.target !== stageRef.current) return;
+    if (currentTool === "select") return;
+    createObjectAtPointer();
   };
 
   const handleStageMouseMove = (e: KonvaEventObject<MouseEvent>) => {
@@ -355,7 +364,7 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
         onDragEnd={handleStageDragEnd}
         onPointerDown={handleStagePointerDown}
         onClick={handleStageClick}
-        onTap={handleStageClick}
+        onTap={handleStageTap}
         onMouseMove={handleStageMouseMove}
       >
         <Layer listening={false}>{renderDotGrid()}</Layer>

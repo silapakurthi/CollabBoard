@@ -11,7 +11,7 @@ interface RectShapeProps {
 }
 
 export const RectShape = forwardRef<any, RectShapeProps>(
-  ({ object, isSelected, onSelect, onDragEnd }, ref) => {
+  ({ object, isSelected: _isSelected, onSelect, onDragEnd }, ref) => {
     return (
       <Rect
         ref={ref}

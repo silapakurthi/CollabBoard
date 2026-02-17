@@ -53,7 +53,7 @@ VITE_FIREBASE_APP_ID=
 
 ## Deployed App
 
-<!-- DEPLOY_URL_PLACEHOLDER -->
+**https://collabboard-55bc3.web.app**
 
 ## Architecture
 

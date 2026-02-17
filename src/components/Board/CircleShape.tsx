@@ -11,7 +11,7 @@ interface CircleShapeProps {
 }
 
 export const CircleShape = forwardRef<any, CircleShapeProps>(
-  ({ object, isSelected, onSelect, onDragEnd }, ref) => {
+  ({ object, isSelected: _isSelected, onSelect, onDragEnd }, ref) => {
     return (
       <Circle
         ref={ref}
