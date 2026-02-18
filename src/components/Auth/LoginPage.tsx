@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { signInWithPopup } from "firebase/auth";
+import { signInWithPopup, signInAnonymously, updateProfile } from "firebase/auth";
 import { auth, googleProvider } from "../../services/firebase";
 
 export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [guestName, setGuestName] = useState("");
 
   const handleGoogleSignIn = async () => {
     setError(null);
@@ -15,6 +16,26 @@ export function LoginPage() {
     } catch (err: any) {
       console.error("Sign-in error:", err);
       setError(err.message || "Failed to sign in with Google");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    const name = guestName.trim();
+    if (!name) {
+      setError("Please enter a display name");
+      return;
+    }
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const credential = await signInAnonymously(auth);
+      await updateProfile(credential.user, { displayName: name });
+    } catch (err: any) {
+      console.error("Guest sign-in error:", err);
+      setError(err.message || "Failed to sign in as guest");
     } finally {
       setIsLoading(false);
     }
@@ -56,6 +77,34 @@ export function LoginPage() {
               {isLoading ? "Signing in..." : "Sign in with Google"}
             </span>
           </button>
+
+          <div className="relative flex items-center">
+            <div className="flex-grow border-t border-gray-300" />
+            <span className="px-3 text-sm text-gray-500">or</span>
+            <div className="flex-grow border-t border-gray-300" />
+          </div>
+
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleGuestSignIn();
+              }}
+              placeholder="Enter your name..."
+              maxLength={40}
+              disabled={isLoading}
+              className="w-full px-4 py-3 text-gray-700 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 transition-colors"
+            />
+            <button
+              onClick={handleGuestSignIn}
+              disabled={isLoading}
+              className="w-full px-4 py-3 text-white bg-gray-700 rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            >
+              {isLoading ? "Signing in..." : "Continue as Guest"}
+            </button>
+          </div>
 
           {error && (
             <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">

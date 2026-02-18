@@ -2,9 +2,8 @@ import { forwardRef } from "react";
 import { Group, Rect, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { BoardObject } from "../../hooks/useFirestore";
-import { contrastText, contrastStroke } from "../../utils/color";
 
-interface RectShapeProps {
+interface TextElementProps {
   object: BoardObject;
   isSelected: boolean;
   isEditing: boolean;
@@ -15,8 +14,11 @@ interface RectShapeProps {
   onStartEdit: () => void;
 }
 
-export const RectShape = forwardRef<any, RectShapeProps>(
+export const TextElement = forwardRef<any, TextElementProps>(
   ({ object, isSelected: _isSelected, isEditing, onSelect, onDragStart, onDragMove, onDragEnd, onStartEdit }, ref) => {
+    const displayText = object.text || (isEditing ? "" : "Double-click to edit");
+    const fontSize = object.fontSize || 16;
+
     return (
       <Group
         ref={ref}
@@ -42,35 +44,21 @@ export const RectShape = forwardRef<any, RectShapeProps>(
           onDragEnd(e);
         }}
       >
+        {/* Invisible hit area matching the full bounding box */}
         <Rect
           width={object.width}
           height={object.height}
-          fill={object.color}
-          stroke={contrastStroke(object.color)}
-          strokeWidth={2}
-          shadowColor="black"
-          shadowBlur={3}
-          shadowOpacity={0.1}
-          shadowOffsetX={1}
-          shadowOffsetY={1}
-          strokeScaleEnabled={false}
+          fill="transparent"
         />
-        {!isEditing && object.text && (
-          <Text
-            text={object.text}
-            x={10}
-            y={10}
-            width={object.width - 20}
-            height={object.height - 20}
-            fontSize={14}
-            fontFamily="sans-serif"
-            fill={contrastText(object.color)}
-            align="center"
-            verticalAlign="middle"
-            wrap="word"
-            listening={false}
-          />
-        )}
+        <Text
+          text={isEditing ? "" : displayText}
+          fontSize={fontSize}
+          fontFamily="sans-serif"
+          fill={object.text ? (object.color || "#374151") : "#9ca3af"}
+          width={object.width}
+          wrap="word"
+          listening={false}
+        />
       </Group>
     );
   }

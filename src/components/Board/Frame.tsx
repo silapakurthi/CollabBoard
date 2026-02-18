@@ -2,21 +2,25 @@ import { forwardRef } from "react";
 import { Group, Rect, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { BoardObject } from "../../hooks/useFirestore";
-import { contrastText, contrastStroke } from "../../utils/color";
 
-interface RectShapeProps {
+interface FrameProps {
   object: BoardObject;
   isSelected: boolean;
   isEditing: boolean;
   onSelect: () => void;
-  onDragStart?: () => void;
-  onDragMove?: (e: KonvaEventObject<DragEvent>) => void;
+  onDragStart: () => void;
+  onDragMove: (e: KonvaEventObject<DragEvent>) => void;
   onDragEnd: (e: KonvaEventObject<DragEvent>) => void;
   onStartEdit: () => void;
 }
 
-export const RectShape = forwardRef<any, RectShapeProps>(
-  ({ object, isSelected: _isSelected, isEditing, onSelect, onDragStart, onDragMove, onDragEnd, onStartEdit }, ref) => {
+export const Frame = forwardRef<any, FrameProps>(
+  (
+    { object, isSelected, isEditing, onSelect, onDragStart, onDragMove, onDragEnd, onStartEdit },
+    ref
+  ) => {
+    const title = object.text || "Frame";
+
     return (
       <Group
         ref={ref}
@@ -27,48 +31,49 @@ export const RectShape = forwardRef<any, RectShapeProps>(
         draggable
         onClick={onSelect}
         onTap={onSelect}
-        onDblClick={onStartEdit}
-        onDblTap={onStartEdit}
         onDragStart={(e) => {
           e.cancelBubble = true;
-          onDragStart?.();
+          onDragStart();
         }}
         onDragMove={(e) => {
           e.cancelBubble = true;
-          onDragMove?.(e);
+          onDragMove(e);
         }}
         onDragEnd={(e) => {
           e.cancelBubble = true;
           onDragEnd(e);
         }}
       >
+        {/* Frame background */}
         <Rect
           width={object.width}
           height={object.height}
-          fill={object.color}
-          stroke={contrastStroke(object.color)}
-          strokeWidth={2}
-          shadowColor="black"
-          shadowBlur={3}
-          shadowOpacity={0.1}
-          shadowOffsetX={1}
-          shadowOffsetY={1}
+          fill="rgba(59, 130, 246, 0.04)"
+          stroke={isSelected ? "#3b82f6" : "#94a3b8"}
+          strokeWidth={isSelected ? 2 : 1.5}
+          dash={[8, 4]}
+          cornerRadius={4}
           strokeScaleEnabled={false}
         />
-        {!isEditing && object.text && (
+        {/* Title label inside top-left */}
+        {!isEditing && (
           <Text
-            text={object.text}
-            x={10}
-            y={10}
-            width={object.width - 20}
-            height={object.height - 20}
+            text={title}
+            x={8}
+            y={8}
             fontSize={14}
             fontFamily="sans-serif"
-            fill={contrastText(object.color)}
-            align="center"
-            verticalAlign="middle"
-            wrap="word"
-            listening={false}
+            fontStyle="bold"
+            fill="#64748b"
+            listening={true}
+            onDblClick={(e) => {
+              e.cancelBubble = true;
+              onStartEdit();
+            }}
+            onDblTap={(e) => {
+              e.cancelBubble = true;
+              onStartEdit();
+            }}
           />
         )}
       </Group>

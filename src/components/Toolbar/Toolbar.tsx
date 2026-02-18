@@ -4,6 +4,7 @@ interface ToolbarProps {
   currentTool: ToolType;
   currentColor: string;
   hasSelection: boolean;
+  selectionCount?: number;
   onToolChange: (tool: ToolType) => void;
   onColorChange: (color: string) => void;
   onDelete: () => void;
@@ -14,16 +15,19 @@ const colors = [
   { name: "Pink", value: "#fbcfe8" },
   { name: "Blue", value: "#bfdbfe" },
   { name: "Green", value: "#bbf7d0" },
-  { name: "Orange", value: "#fed7aa" },
-  { name: "Purple", value: "#e9d5ff" },
   { name: "White", value: "#ffffff" },
-  { name: "Gray", value: "#e5e7eb" },
+  { name: "Red", value: "#dc2626" },
+  { name: "Navy", value: "#1e3a5f" },
+  { name: "Emerald", value: "#047857" },
+  { name: "Purple", value: "#7c3aed" },
+  { name: "Charcoal", value: "#374151" },
 ];
 
 export function Toolbar({
   currentTool,
   currentColor,
   hasSelection,
+  selectionCount,
   onToolChange,
   onColorChange,
   onDelete,
@@ -43,7 +47,7 @@ export function Toolbar({
   );
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-white rounded-lg shadow-lg border border-gray-200 px-4 py-3">
+    <div className="bg-white rounded-lg shadow-lg border border-gray-200 px-4 py-3">
       <div className="flex items-center gap-4">
         {/* Tool buttons */}
         <div className="flex gap-2">
@@ -52,6 +56,9 @@ export function Toolbar({
           {toolButton("rectangle", "Rectangle", "▭")}
           {toolButton("circle", "Circle", "⭕")}
           {toolButton("line", "Line", "—")}
+          {toolButton("text", "Text", "T")}
+          {toolButton("connector", "Connector (click source then target)", "⤳")}
+          {toolButton("frame", "Frame (click and drag)", "▢")}
         </div>
 
         {/* Divider */}
@@ -78,7 +85,12 @@ export function Toolbar({
         {/* Divider */}
         <div className="w-px h-8 bg-gray-300" />
 
-        {/* Delete button */}
+        {/* Selection count + Delete button */}
+        {selectionCount != null && selectionCount > 1 && (
+          <span className="text-xs font-medium text-gray-500 select-none">
+            {selectionCount} selected
+          </span>
+        )}
         <button
           onClick={onDelete}
           disabled={!hasSelection}

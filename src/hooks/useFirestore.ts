@@ -10,9 +10,14 @@ import {
 } from "firebase/firestore";
 import { db } from "../services/firebase";
 
+export interface ConnectorStyle {
+  lineStyle: "solid" | "dashed";
+  arrowHead: boolean;
+}
+
 export interface BoardObject {
   id: string;
-  type: "sticky" | "rectangle" | "circle" | "line";
+  type: "sticky" | "rectangle" | "circle" | "line" | "connector" | "text" | "frame";
   x: number;
   y: number;
   width: number;
@@ -20,11 +25,15 @@ export interface BoardObject {
   rotation: number;
   text?: string;
   color: string;
+  fontSize?: number;
   radius?: number;
   points?: number[];
+  connectedFrom?: string;
+  connectedTo?: string;
+  style?: ConnectorStyle;
 }
 
-export type ToolType = "select" | "sticky" | "rectangle" | "circle" | "line";
+export type ToolType = "select" | "sticky" | "rectangle" | "circle" | "line" | "connector" | "text" | "frame";
 
 export function useFirestore(boardId: string, userId: string) {
   const [objects, setObjects] = useState<BoardObject[]>([]);

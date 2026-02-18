@@ -1,35 +1,52 @@
+import { forwardRef } from "react";
 import { Group, Rect, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { BoardObject } from "../../hooks/useFirestore";
+import { contrastText } from "../../utils/color";
 
 interface StickyNoteProps {
   object: BoardObject;
   isSelected: boolean;
   isEditing: boolean;
   onSelect: () => void;
+  onDragStart?: () => void;
+  onDragMove?: (e: KonvaEventObject<DragEvent>) => void;
   onDragEnd: (e: KonvaEventObject<DragEvent>) => void;
   onStartEdit: () => void;
 }
 
-export function StickyNote({
+export const StickyNote = forwardRef<any, StickyNoteProps>(({
   object,
   isSelected,
   isEditing,
   onSelect,
+  onDragStart,
+  onDragMove,
   onDragEnd,
   onStartEdit,
-}: StickyNoteProps) {
+}, ref) => {
   const displayText = object.text || "Double-click to edit";
 
   return (
     <Group
+      ref={ref}
       x={object.x}
       y={object.y}
+      width={object.width}
+      height={object.height}
       draggable
       onClick={onSelect}
       onTap={onSelect}
       onDblClick={onStartEdit}
       onDblTap={onStartEdit}
+      onDragStart={(e) => {
+        e.cancelBubble = true;
+        onDragStart?.();
+      }}
+      onDragMove={(e) => {
+        e.cancelBubble = true;
+        onDragMove?.(e);
+      }}
       onDragEnd={(e) => {
         e.cancelBubble = true;
         onDragEnd(e);
@@ -58,7 +75,7 @@ export function StickyNote({
           y={10}
           fontSize={14}
           fontFamily="sans-serif"
-          fill={displayText === "Double-click to edit" ? "#9ca3af" : "#374151"}
+          fill={displayText === "Double-click to edit" ? "#9ca3af" : contrastText(object.color)}
           align="left"
           verticalAlign="top"
           wrap="word"
@@ -66,4 +83,4 @@ export function StickyNote({
       )}
     </Group>
   );
-}
+});

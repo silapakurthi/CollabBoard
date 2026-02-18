@@ -25,7 +25,7 @@ export function PresenceBar({ allUsers, currentUserId }: PresenceBarProps) {
   if (activeUsers.length === 0) return null;
 
   return (
-    <div className="absolute top-4 right-4 z-10 flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+    <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm">
       {activeUsers.map((user) => {
         const isYou = user.userId === currentUserId;
         return (
