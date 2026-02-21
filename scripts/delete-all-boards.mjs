@@ -1,6 +1,6 @@
 /**
  * One-off script to delete all boards and their subcollections from Firestore.
- * Usage: node scripts/delete-all-boards.mjs
+ * Usage: node --env-file=.env scripts/delete-all-boards.mjs
  */
 import { initializeApp } from "firebase/app";
 import {
@@ -14,12 +14,12 @@ import {
 import { getAuth, signInAnonymously } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDbAeWJW7UBvSbkR-B6U8EtKPkHJWrGIoI",
-  authDomain: "collabboard-55bc3.firebaseapp.com",
-  projectId: "collabboard-55bc3",
-  storageBucket: "collabboard-55bc3.firebasestorage.app",
-  messagingSenderId: "1023039859599",
-  appId: "1:1023039859599:web:fe6886db5e756095bbf9fa",
+  apiKey: process.env.VITE_FIREBASE_API_KEY,
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
