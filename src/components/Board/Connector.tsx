@@ -79,7 +79,7 @@ export function ConnectorShape({
     stroke: color,
     strokeWidth,
     dash: isDashed ? [10, 5] : undefined,
-    hitStrokeWidth: 14, // wide hit area for easy clicking
+    hitStrokeWidth: 24, // wide hit area for easy clicking
     onClick: onSelect,
     onTap: onSelect,
     strokeScaleEnabled: false,

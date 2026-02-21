@@ -120,3 +120,11 @@ npx firebase deploy
 | `src/context/AuthContext.tsx` | Firebase Auth state provider |
 | `src/utils/color.ts` | Contrast-aware text and stroke color utilities |
 | `firestore.rules` | Security rules — authenticated users only |
+
+### Conflict Resolution
+
+Firestore uses **last-write-wins** at the field level. When two users edit the same object simultaneously, whichever write reaches Firestore last is the value that persists and syncs to all clients. This is acceptable for a collaborative whiteboard because:
+
+- **Conflicts are rare in practice** — users typically work on different objects at the same time, so concurrent edits to the same field are uncommon.
+- **The result is always a valid state** — every write is a complete, well-formed field value, so there is no risk of corrupted or partial data.
+- **Cursor and presence data are conflict-free** — each user writes only to their own presence document, so no two users ever contend for the same presence record.

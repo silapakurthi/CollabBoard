@@ -51,11 +51,39 @@ export function useBoard() {
     }));
   };
 
+  /** Pan & zoom the viewport so all given bounds are visible with padding. */
+  const fitToContent = (
+    bounds: { minX: number; minY: number; maxX: number; maxY: number },
+    screenWidth: number,
+    screenHeight: number
+  ) => {
+    const contentW = bounds.maxX - bounds.minX;
+    const contentH = bounds.maxY - bounds.minY;
+    if (contentW <= 0 || contentH <= 0) return;
+
+    const pad = 80;
+    const scale = Math.min(
+      (screenWidth - pad * 2) / contentW,
+      (screenHeight - pad * 2) / contentH,
+      1.5
+    );
+    const clampedScale = Math.max(0.1, Math.min(5, scale));
+
+    setViewport({
+      stageScale: clampedScale,
+      stagePos: {
+        x: -bounds.minX * clampedScale + (screenWidth - contentW * clampedScale) / 2,
+        y: -bounds.minY * clampedScale + (screenHeight - contentH * clampedScale) / 2,
+      },
+    });
+  };
+
   return {
     viewport,
     handlers: {
       onWheel: handleWheel,
       onDragEnd: handleDragEnd,
     },
+    fitToContent,
   };
 }

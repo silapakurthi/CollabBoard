@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   collection,
   doc,
@@ -6,6 +6,7 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot,
+  getDocsFromServer,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../services/firebase";
@@ -77,5 +78,17 @@ export function useFirestore(boardId: string, userId: string) {
     await deleteDoc(doc(db, `boards/${boardId}/objects`, id));
   };
 
-  return { objects, addObject, updateObject, deleteObject, loading };
+  /** Force-read all objects from Firestore server (bypasses local cache). */
+  const refreshObjects = useCallback(async () => {
+    if (!boardId) return;
+    const objectsCol = collection(db, `boards/${boardId}/objects`);
+    const snapshot = await getDocsFromServer(objectsCol);
+    const list: BoardObject[] = snapshot.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<BoardObject, "id">),
+    }));
+    setObjects(list);
+  }, [boardId]);
+
+  return { objects, addObject, updateObject, deleteObject, refreshObjects, loading };
 }

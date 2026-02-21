@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, Fragment } from "react";
 import type { KonvaEventObject } from "konva/lib/Node";
-import { Stage, Layer, Circle, Rect, Arrow, Transformer } from "react-konva";
+import { Stage, Layer, Circle, Ellipse, Rect, Line, Arrow, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { BoardObject } from "../../hooks/useFirestore";
 import type { UserPresence } from "../../hooks/usePresence";
@@ -36,6 +36,7 @@ interface CanvasProps {
     addObject: (obj: BoardObject) => void;
     updateObject: (id: string, updates: Partial<BoardObject>) => void;
     deleteObject: (id: string) => void;
+    refreshObjects: () => Promise<void>;
   };
   presence: {
     otherUsers: UserPresence[];
@@ -89,6 +90,15 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
     currentY: number;
   } | null>(null);
 
+  // Shape drawing (drag-to-create for rectangle, circle, sticky, line, text)
+  const [shapeDraw, setShapeDraw] = useState<{
+    tool: "rectangle" | "circle" | "sticky" | "line" | "text";
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+
   // Force re-render during transform so connectors update in real-time
   const [, setTransformTick] = useState(0);
 
@@ -119,6 +129,7 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
     addObject,
     updateObject,
     deleteObject,
+    refreshObjects,
   } = objectState;
 
   const stageRef = useRef<Konva.Stage>(null);
@@ -155,6 +166,30 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
 
   // Deferred text-editing start (waits for Firestore snapshot)
   const pendingEditRef = useRef<string | null>(null);
+
+  // Expose board data for E2E testing (Konva ESM build doesn't set window.Konva)
+  const addObjectRef = useRef(addObject);
+  addObjectRef.current = addObject;
+  const updateObjectRef = useRef(updateObject);
+  updateObjectRef.current = updateObject;
+  const refreshObjectsRef = useRef(refreshObjects);
+  refreshObjectsRef.current = refreshObjects;
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
+  useEffect(() => {
+    const w = window as any;
+    w.__TEST_CANVAS = {
+      get objects() { return objects; },
+      get viewport() { return viewportRef.current; },
+      get selectedIds() { return selectedIdsRef.current; },
+      addObject: (obj: BoardObject) => addObjectRef.current(obj),
+      updateObject: (id: string, updates: Partial<BoardObject>) => updateObjectRef.current(id, updates),
+      refreshObjects: () => refreshObjectsRef.current(),
+    };
+    return () => { delete w.__TEST_CANVAS; };
+  }, [objects]);
 
   // ── Effects ──────────────────────────────────────────────────────────────────
 
@@ -289,6 +324,12 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
   // Cancel frame draw when switching away from frame tool
   useEffect(() => {
     if (currentTool !== "frame") setFrameDraw(null);
+  }, [currentTool]);
+
+  // Cancel shape draw when switching away from shape tools
+  useEffect(() => {
+    const drawTools = ["rectangle", "circle", "sticky", "line", "text"];
+    if (!drawTools.includes(currentTool)) setShapeDraw(null);
   }, [currentTool]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -640,6 +681,14 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
       setFrameDraw({ startX: wp.x, startY: wp.y, currentX: wp.x, currentY: wp.y });
       return;
     }
+    if (currentTool === "rectangle" || currentTool === "circle" || currentTool === "sticky" || currentTool === "line" || currentTool === "text") {
+      const stage = stageRef.current;
+      const ptr = stage?.getPointerPosition();
+      if (!ptr) return;
+      const wp = getWorldPos(ptr.x, ptr.y);
+      setShapeDraw({ tool: currentTool, startX: wp.x, startY: wp.y, currentX: wp.x, currentY: wp.y });
+      return;
+    }
     if (currentTool === "connector") {
       setPendingConnectorFrom(null);
       clearSelection();
@@ -713,13 +762,14 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
 
   const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
     if (e.target !== stageRef.current) return;
-    if (currentTool === "select" || currentTool === "connector" || currentTool === "frame") return;
-    createObjectAtPointer();
+    // All shape tools are handled by the drag-to-create flow (pointerDown → mouseMove → mouseUp)
+    if (currentTool !== "select") return;
   };
 
   const handleStageTap = (e: KonvaEventObject<TouchEvent>) => {
     if (e.target !== stageRef.current) return;
     if (currentTool === "select" || currentTool === "connector" || currentTool === "frame") return;
+    if (shapeDraw) setShapeDraw(null);
     createObjectAtPointer();
   };
 
@@ -737,6 +787,11 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
     }
     if (currentTool === "frame" && frameDraw) {
       setFrameDraw((prev) =>
+        prev ? { ...prev, currentX: worldPos.x, currentY: worldPos.y } : null
+      );
+    }
+    if (shapeDraw) {
+      setShapeDraw((prev) =>
         prev ? { ...prev, currentX: worldPos.x, currentY: worldPos.y } : null
       );
     }
@@ -837,6 +892,110 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
         setCurrentTool("select");
       }
       setFrameDraw(null);
+    }
+
+    // Shape drawing finalization
+    if (shapeDraw) {
+      const dx = Math.abs(shapeDraw.currentX - shapeDraw.startX);
+      const dy = Math.abs(shapeDraw.currentY - shapeDraw.startY);
+      const isClick = dx < 10 && dy < 10;
+
+      const x = Math.min(shapeDraw.startX, shapeDraw.currentX);
+      const y = Math.min(shapeDraw.startY, shapeDraw.currentY);
+      const w = Math.abs(shapeDraw.currentX - shapeDraw.startX);
+      const h = Math.abs(shapeDraw.currentY - shapeDraw.startY);
+
+      let newObject: BoardObject | null = null;
+
+      if (shapeDraw.tool === "rectangle") {
+        newObject = {
+          id: crypto.randomUUID(),
+          type: "rectangle",
+          x: isClick ? shapeDraw.startX : x,
+          y: isClick ? shapeDraw.startY : y,
+          width: isClick ? 150 : w,
+          height: isClick ? 100 : h,
+          rotation: 0,
+          color: currentColor,
+        };
+      } else if (shapeDraw.tool === "circle") {
+        if (isClick) {
+          newObject = {
+            id: crypto.randomUUID(),
+            type: "circle",
+            x: shapeDraw.startX,
+            y: shapeDraw.startY,
+            width: 120,
+            height: 120,
+            rotation: 0,
+            color: currentColor,
+            radius: 60,
+          };
+        } else {
+          const radius = Math.max(w, h) / 2;
+          newObject = {
+            id: crypto.randomUUID(),
+            type: "circle",
+            x: x + w / 2,
+            y: y + h / 2,
+            width: radius * 2,
+            height: radius * 2,
+            rotation: 0,
+            color: currentColor,
+            radius,
+          };
+        }
+      } else if (shapeDraw.tool === "sticky") {
+        const side = isClick ? 200 : Math.max(w, h);
+        newObject = {
+          id: crypto.randomUUID(),
+          type: "sticky",
+          x: isClick ? shapeDraw.startX : x,
+          y: isClick ? shapeDraw.startY : y,
+          width: side,
+          height: side,
+          rotation: 0,
+          color: currentColor,
+        };
+      } else if (shapeDraw.tool === "line") {
+        newObject = {
+          id: crypto.randomUUID(),
+          type: "line",
+          x: shapeDraw.startX,
+          y: shapeDraw.startY,
+          width: 0,
+          height: 0,
+          rotation: 0,
+          color: currentColor,
+          points: isClick
+            ? [0, 0, 200, 0]
+            : [0, 0, shapeDraw.currentX - shapeDraw.startX, shapeDraw.currentY - shapeDraw.startY],
+        };
+      } else if (shapeDraw.tool === "text") {
+        newObject = {
+          id: crypto.randomUUID(),
+          type: "text",
+          x: isClick ? shapeDraw.startX : x,
+          y: isClick ? shapeDraw.startY : y,
+          width: isClick ? 200 : Math.max(w, 40),
+          height: isClick ? 30 : Math.max(h, 20),
+          rotation: 0,
+          color: currentColor,
+          fontSize: 16,
+          text: "",
+        };
+      }
+
+      if (newObject) {
+        addObject(newObject);
+        selectOne(newObject.id);
+        if (shapeDraw.tool === "text") {
+          pendingEditRef.current = newObject.id;
+        }
+      }
+
+      setShapeDraw(null);
+      setCurrentTool("select");
     }
   };
 
@@ -1190,6 +1349,85 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
     );
   };
 
+  const renderShapeDrawPreview = () => {
+    if (!shapeDraw) return null;
+    const w = Math.abs(shapeDraw.currentX - shapeDraw.startX);
+    const h = Math.abs(shapeDraw.currentY - shapeDraw.startY);
+    if (w < 2 && h < 2) return null;
+    const x = Math.min(shapeDraw.startX, shapeDraw.currentX);
+    const y = Math.min(shapeDraw.startY, shapeDraw.currentY);
+    const dashPattern = [6 / viewport.stageScale, 4 / viewport.stageScale];
+    const sw = 1.5 / viewport.stageScale;
+
+    if (shapeDraw.tool === "rectangle" || shapeDraw.tool === "text") {
+      return (
+        <Rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          fill="rgba(59, 130, 246, 0.08)"
+          stroke={shapeDraw.tool === "text" ? "#3b82f6" : currentColor}
+          strokeWidth={sw}
+          dash={dashPattern}
+          listening={false}
+          strokeScaleEnabled={false}
+        />
+      );
+    }
+
+    if (shapeDraw.tool === "sticky") {
+      const side = Math.max(w, h);
+      return (
+        <Rect
+          x={x}
+          y={y}
+          width={side}
+          height={side}
+          fill={currentColor + "40"}
+          stroke={currentColor}
+          strokeWidth={sw}
+          dash={dashPattern}
+          cornerRadius={8}
+          listening={false}
+          strokeScaleEnabled={false}
+        />
+      );
+    }
+
+    if (shapeDraw.tool === "circle") {
+      return (
+        <Ellipse
+          x={x + w / 2}
+          y={y + h / 2}
+          radiusX={w / 2}
+          radiusY={h / 2}
+          fill="rgba(59, 130, 246, 0.08)"
+          stroke={currentColor}
+          strokeWidth={sw}
+          dash={dashPattern}
+          listening={false}
+          strokeScaleEnabled={false}
+        />
+      );
+    }
+
+    if (shapeDraw.tool === "line") {
+      return (
+        <Line
+          points={[shapeDraw.startX, shapeDraw.startY, shapeDraw.currentX, shapeDraw.currentY]}
+          stroke={currentColor}
+          strokeWidth={sw}
+          dash={dashPattern}
+          listening={false}
+          strokeScaleEnabled={false}
+        />
+      );
+    }
+
+    return null;
+  };
+
   const renderMarqueePreview = () => {
     if (!marquee) return null;
     const x = Math.min(marquee.startX, marquee.currentX);
@@ -1254,6 +1492,7 @@ export function Canvas({ viewport, handlers, objectState, presence }: CanvasProp
           {connectors.map(renderObject)}
           {renderConnectorPreview()}
           {renderFrameDrawPreview()}
+          {renderShapeDrawPreview()}
           {renderMarqueePreview()}
           {shapes.map(renderObject)}
           <Transformer

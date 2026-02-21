@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npx playwright test",
+    "test:functional": "npx playwright test tests/functional",
+    "test:performance": "npx playwright test tests/performance",
+    "test:ui": "npx playwright test --ui",
+    "test:emulators": "npx firebase emulators:exec --only auth,firestore \"cross-env VITE_USE_EMULATORS=true npx playwright test\""
   },
   "dependencies": {
     "firebase": "^12.9.0",
@@ -19,11 +24,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "cross-env": "^10.1.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

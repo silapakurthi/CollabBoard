@@ -9,13 +9,15 @@ import { useBoard } from "../../hooks/useBoard";
 import { useFirestore } from "../../hooks/useFirestore";
 import { usePresence } from "../../hooks/usePresence";
 import { useAuth } from "../../context/AuthContext";
-import type { ToolType } from "../../hooks/useFirestore";
+import { useAI } from "../../hooks/useAI";
+import { AICommandInput } from "../AI/AICommandInput";
+import type { ToolType, ConnectorStyle } from "../../hooks/useFirestore";
 
 export function BoardView() {
   const { boardId } = useParams<{ boardId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { viewport, handlers } = useBoard();
+  const { viewport, handlers, fitToContent } = useBoard();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentTool, setCurrentTool] = useState<ToolType>("select");
   const [currentColor, setCurrentColor] = useState("#fef08a");
@@ -26,8 +28,16 @@ export function BoardView() {
   const [editingNameText, setEditingNameText] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const { objects, addObject, updateObject, deleteObject, loading } =
+  const { objects, addObject, updateObject, deleteObject, refreshObjects, loading } =
     useFirestore(boardId ?? "", user?.uid ?? "");
+
+  const {
+    sendCommand,
+    isLoading: aiLoading,
+    error: aiError,
+    commandHistory,
+    lastCommandId,
+  } = useAI();
 
   const { allUsers, otherUsers, updateCursor } = usePresence(
     boardId ?? "",
@@ -91,6 +101,88 @@ export function BoardView() {
     });
   }, [objects]);
 
+  // After an AI command completes, wait briefly for Firestore to sync
+  // then fit the viewport to show all objects including new ones.
+  useEffect(() => {
+    if (lastCommandId === 0) return;
+    const timer = setTimeout(() => {
+      if (objects.length === 0) return;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const obj of objects) {
+        minX = Math.min(minX, obj.x);
+        minY = Math.min(minY, obj.y);
+        maxX = Math.max(maxX, obj.x + obj.width);
+        maxY = Math.max(maxY, obj.y + obj.height);
+      }
+      fitToContent(
+        { minX, minY, maxX, maxY },
+        window.innerWidth,
+        window.innerHeight
+      );
+    }, 1500); // wait for Firestore onSnapshot to deliver new objects
+    return () => clearTimeout(timer);
+  }, [lastCommandId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDuplicate = () => {
+    if (selectedIds.size === 0) return;
+
+    const selected = objects.filter((o) => selectedIds.has(o.id));
+    const idMap = new Map<string, string>();
+    selected.forEach((obj) => idMap.set(obj.id, crypto.randomUUID()));
+
+    const newIds: string[] = [];
+
+    for (const obj of selected) {
+      const newId = idMap.get(obj.id)!;
+      const newObj = {
+        ...structuredClone(obj),
+        id: newId,
+        x: obj.x + 20,
+        y: obj.y + 20,
+      };
+
+      if (obj.type === "connector") {
+        const newFrom = obj.connectedFrom ? idMap.get(obj.connectedFrom) : undefined;
+        const newTo = obj.connectedTo ? idMap.get(obj.connectedTo) : undefined;
+        if (newFrom && newTo) {
+          newObj.connectedFrom = newFrom;
+          newObj.connectedTo = newTo;
+          newObj.x = 0;
+          newObj.y = 0;
+        } else {
+          continue;
+        }
+      }
+
+      addObject(newObj);
+      newIds.push(newId);
+    }
+
+    // Also duplicate connectors between selected objects that aren't themselves selected
+    const selectedSet = new Set(selected.map((o) => o.id));
+    const connectorsToClone = objects.filter(
+      (o) =>
+        o.type === "connector" &&
+        !selectedSet.has(o.id) &&
+        o.connectedFrom &&
+        selectedSet.has(o.connectedFrom) &&
+        o.connectedTo &&
+        selectedSet.has(o.connectedTo)
+    );
+    for (const conn of connectorsToClone) {
+      const newConn = {
+        ...structuredClone(conn),
+        id: crypto.randomUUID(),
+        connectedFrom: idMap.get(conn.connectedFrom!)!,
+        connectedTo: idMap.get(conn.connectedTo!)!,
+      };
+      addObject(newConn);
+      newIds.push(newConn.id);
+    }
+
+    selectMany(newIds);
+  };
+
   const handleDelete = () => {
     if (selectedIds.size === 0) return;
     // Collect connectors attached to any selected object
@@ -123,9 +215,17 @@ export function BoardView() {
     addObject,
     updateObject,
     deleteObject,
+    refreshObjects,
   };
 
   const presenceState = { otherUsers, updateCursor };
+
+  // Derive selected connector for toolbar style controls
+  const selectedConnector = (() => {
+    if (selectedIds.size !== 1) return null;
+    const id = [...selectedIds][0];
+    return objects.find((o) => o.id === id && o.type === "connector") ?? null;
+  })();
 
   if (loading) {
     return (
@@ -182,7 +282,23 @@ export function BoardView() {
             selectionCount={selectedIds.size}
             onToolChange={setCurrentTool}
             onColorChange={setCurrentColor}
+            onColorChangeSelected={(color) => {
+              for (const id of selectedIds) {
+                updateObject(id, { color });
+              }
+            }}
+            onDuplicate={handleDuplicate}
             onDelete={handleDelete}
+            connectorStyle={
+              selectedConnector
+                ? selectedConnector.style ?? { lineStyle: "solid" as const, arrowHead: true }
+                : undefined
+            }
+            onConnectorStyleChange={
+              selectedConnector
+                ? (style: ConnectorStyle) => updateObject(selectedConnector.id, { style })
+                : undefined
+            }
           />
         </div>
 
@@ -198,6 +314,16 @@ export function BoardView() {
         handlers={handlers}
         objectState={objectState}
         presence={presenceState}
+      />
+
+      {/* AI command input */}
+      <AICommandInput
+        boardId={boardId ?? ""}
+        boardState={objects as unknown as Array<Record<string, unknown>>}
+        onSendCommand={sendCommand}
+        isLoading={aiLoading}
+        error={aiError}
+        commandHistory={commandHistory}
       />
 
       {/* Zoom indicator */}

@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../../services/firebase";
 import { useAuth } from "../../context/AuthContext";
+import { BoardPreview } from "./BoardPreview";
 
 interface Board {
   id: string;
@@ -31,6 +32,8 @@ export function BoardList() {
   const [newBoardName, setNewBoardName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -192,6 +195,16 @@ export function BoardList() {
     }
   };
 
+  const handleDeleteAllBoards = async () => {
+    setConfirmDeleteAll(false);
+    setDeletingAll(true);
+    try {
+      await Promise.all(boards.map((board) => handleDeleteBoard(board.id)));
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -200,7 +213,11 @@ export function BoardList() {
             <h1 className="text-3xl font-bold text-gray-900">
               Welcome, {user?.displayName || "User"}!
             </h1>
-            <p className="text-gray-600 mt-1">Manage your collaborative boards</p>
+            <p className="text-gray-600 mt-1">
+              {loadingBoards
+                ? "Loading boards..."
+                : `${boards.length} board${boards.length !== 1 ? "s" : ""}`}
+            </p>
           </div>
           <button
             onClick={handleSignOut}
@@ -253,6 +270,35 @@ export function BoardList() {
               >
                 Create Demo Board
               </button>
+              {boards.length > 0 && (
+                confirmDeleteAll ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-red-600 font-medium">
+                      Delete all {boards.length} board{boards.length !== 1 ? "s" : ""}?
+                    </span>
+                    <button
+                      onClick={handleDeleteAllBoards}
+                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none transition-colors"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteAll(false)}
+                      className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteAll(true)}
+                    disabled={deletingAll}
+                    className="px-6 py-3 text-base font-medium text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors disabled:opacity-50"
+                  >
+                    {deletingAll ? "Deleting..." : "Delete All Boards"}
+                  </button>
+                )
+              )}
             </div>
           )}
         </div>
@@ -294,19 +340,22 @@ export function BoardList() {
                   <>
                     <Link
                       to={`/board/${board.id}`}
-                      className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border border-gray-100 block"
+                      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-100 block overflow-hidden"
                     >
-                      <h2 className="text-lg font-semibold text-gray-900 truncate pr-6">
-                        {board.name}
-                      </h2>
-                      {board.createdAt && (
-                        <p className="text-sm text-gray-500 mt-2">
-                          {board.createdAt.toLocaleDateString()}
-                        </p>
-                      )}
-                      {deletingId === board.id && (
-                        <p className="text-xs text-red-500 mt-2">Deleting…</p>
-                      )}
+                      <BoardPreview boardId={board.id} />
+                      <div className="px-4 py-3">
+                        <h2 className="text-lg font-semibold text-gray-900 truncate pr-6">
+                          {board.name}
+                        </h2>
+                        {board.createdAt && (
+                          <p className="text-sm text-gray-500 mt-1">
+                            {board.createdAt.toLocaleDateString()}
+                          </p>
+                        )}
+                        {deletingId === board.id && (
+                          <p className="text-xs text-red-500 mt-1">Deleting…</p>
+                        )}
+                      </div>
                     </Link>
                     {/* Delete button */}
                     <button
