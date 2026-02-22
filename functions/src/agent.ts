@@ -15,6 +15,12 @@ You have access to tools to create, modify, and arrange objects on the board.
 When given a command, determine which tools to call and in what order.
 Always call tools — never respond with just text. You MUST call at least one tool for every command.
 
+EFFICIENCY — BATCH YOUR TOOL CALLS:
+- Call as many tools as possible in a SINGLE response. Do NOT call them one at a time across multiple turns.
+- For example, to create a flowchart with 4 boxes and 3 arrows: create ALL 4 boxes in your first response, then once you receive their IDs, create ALL 3 connectors in your second response. That's 2 turns, not 7.
+- For templates (SWOT, Kanban, etc.): create ALL frames in one call, then ALL child objects in the next call, then ALL connectors in the next. Minimize round trips.
+- NEVER use more than 4 turns for any command. If you need more, you're being too incremental.
+
 IMPORTANT — TRACK IDs CAREFULLY:
 - When you create an object (sticky note, shape, frame, connector), the result message tells you its ID (e.g. Created sticky note with id "aBcDeFgHiJkL").
 - You MUST use those EXACT IDs when referencing objects later (for connectors, moves, style changes, etc.).
@@ -55,7 +61,54 @@ LAYOUT RULES — follow these strictly to avoid overlapping objects:
 - For column layouts (e.g. retrospective), use tall narrow frames side by side.
 - When arranging existing objects in a grid, compute positions so nothing overlaps:
   row = floor(index / columns), col = index % columns.
-  x = startX + col * 220, y = startY + row * 220.`;
+  x = startX + col * 220, y = startY + row * 220.
+
+COMPOSITIONAL COMMANDS — follow these patterns for multi-element structures:
+
+Flowcharts:
+- Use rectangles (200x80) for process steps, arranged top-to-bottom with 100px vertical gaps.
+- First rectangle at startY, second at startY + 180, etc.
+- Create ALL rectangles first in one batch. Then create connectors between consecutive steps.
+- Use solid connectors with arrow heads for the flow direction.
+- For decision diamonds: use a rectangle with text like "Decision?" — diamond shapes are not available.
+- Example 4-step flowchart: 4 rectangles at y=50, 230, 410, 590 (each 200x80), then 3 connectors linking them sequentially.
+
+Kanban Boards:
+- Create 3-4 tall narrow frames side by side (width ~260, height ~600): "To Do", "In Progress", "Done" (and optionally "Backlog").
+- Space frames 30px apart horizontally.
+- Optionally add 1-2 sample sticky notes inside each column.
+- Turn 1: create all frames. Turn 2: create sticky notes inside them.
+
+Org Charts / Hierarchies:
+- Use rectangles (200x80) arranged in tree layout.
+- Top node centered, then children spaced evenly below with 100px vertical gap and 40px horizontal gap.
+- Create all rectangles first, then all connectors.
+
+Mind Maps:
+- Central rectangle or sticky note in the center.
+- Branch nodes arranged radially: top, right, bottom, left, or in a spoke pattern.
+- Connect center to each branch with connectors.
+
+User Journey Maps:
+- Create N frames side by side (one per stage), each ~260px wide.
+- Add a title sticky and description sticky inside each frame.
+- Connect frames with dashed connectors to show flow.
+
+Process Diagrams:
+- Similar to flowcharts but can be horizontal (left-to-right).
+- Use rectangles (200x80) spaced 240px apart horizontally.
+- Create all steps first, then all connectors.
+
+Timeline:
+- Create rectangles or stickies in a horizontal row.
+- Add a horizontal line connecting the start to the end.
+- Or use connectors between sequential items.
+
+General Composition Rules:
+- ALWAYS create structural elements (frames, shapes) FIRST, then connectors SECOND.
+- ALWAYS batch: create as many objects as possible per tool response.
+- For any structure with N nodes and connections: Turn 1 = create all N nodes, Turn 2 = create all connectors using the returned IDs.
+- If unsure what the user wants, default to a clean top-to-bottom flowchart layout.`;
 
 const TOOLS: Anthropic.Messages.Tool[] = [
   {
@@ -330,18 +383,40 @@ export async function runBoardAgent(req: AgentRequest): Promise<AgentResult> {
 
       let totalInput = 0;
       let totalOutput = 0;
-      const MAX_TURNS = 25;
+      // Keep turns low — the prompt instructs the LLM to batch tool calls,
+      // so even complex flowcharts should complete in 2-3 turns (create nodes → create connectors → done).
+      // 8 turns is a generous safety margin. Going higher causes perceived "infinite loading".
+      const MAX_TURNS = 8;
+      // Per-turn timeout: if a single LLM call takes longer than 30s, abort.
+      const PER_TURN_TIMEOUT_MS = 30_000;
 
       for (let turn = 0; turn < MAX_TURNS; turn++) {
-        console.log(`[board-agent] Turn ${turn}, command: "${req.command}", boardState objects: ${req.boardState.length}`);
+        console.log(`[board-agent] Turn ${turn}/${MAX_TURNS}, command: "${req.command}", boardState objects: ${req.boardState.length}, actions so far: ${allActions.length}`);
 
-        const res = await anthropic.messages.create({
-          model: params.model,
-          max_tokens: params.maxTokens || 4096,
-          system: params.systemPrompt || "",
-          messages,
-          tools: TOOLS,
-        });
+        let res: Anthropic.Messages.Message;
+        try {
+          res = await Promise.race([
+            anthropic.messages.create({
+              model: params.model,
+              max_tokens: params.maxTokens || 4096,
+              system: params.systemPrompt || "",
+              messages,
+              tools: TOOLS,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`LLM call timed out after ${PER_TURN_TIMEOUT_MS}ms on turn ${turn}`)), PER_TURN_TIMEOUT_MS)
+            ),
+          ]);
+        } catch (err) {
+          console.error(`[board-agent] Turn ${turn} failed:`, err);
+          // If we already have some actions, commit what we have rather than losing everything
+          if (allActions.length > 0) {
+            console.log(`[board-agent] Partial completion: committing ${allActions.length} actions despite error`);
+            agentSummary += ` (Partially completed — ${allActions.length} actions executed before timeout)`;
+            break;
+          }
+          throw err;
+        }
 
         totalInput += res.usage.input_tokens;
         totalOutput += res.usage.output_tokens;
@@ -386,15 +461,16 @@ export async function runBoardAgent(req: AgentRequest): Promise<AgentResult> {
         }
 
         if (res.stop_reason !== "tool_use") {
-          // If the LLM finished without calling any tools, nudge it to use tools
-          if (allActions.length === 0 && turn < MAX_TURNS - 1) {
-            console.log(`[board-agent] No tools called on turn ${turn}, nudging LLM to use tools`);
+          // If the LLM finished without calling any tools, nudge it ONCE
+          if (allActions.length === 0 && turn === 0) {
+            console.log(`[board-agent] No tools called on turn ${turn}, nudging LLM once`);
             messages.push({ role: "assistant", content: res.content });
             messages.push({
               role: "user",
               content:
                 "You MUST use the available tools to execute the command. Do not respond with just text. " +
-                "Look at the board state, identify the relevant objects by their IDs, and call the appropriate tool now.",
+                "Call ALL the tools you need in a single response — batch them. " +
+                "Look at the board state, identify the relevant objects by their IDs, and call the appropriate tools now.",
             });
             continue;
           }
@@ -403,7 +479,33 @@ export async function runBoardAgent(req: AgentRequest): Promise<AgentResult> {
 
         // Continue multi-turn conversation with tool results
         messages.push({ role: "assistant", content: res.content });
-        messages.push({ role: "user", content: toolResults });
+
+        // Nudge the model to batch if it only made a single tool call.
+        // Without this, the model tends to create one object per turn,
+        // turning a 2-turn flowchart into a 25-turn crawl.
+        if (toolResults.length === 1 && turn < MAX_TURNS - 1) {
+          console.log(`[board-agent] Single tool call on turn ${turn}, adding batch reminder`);
+          messages.push({
+            role: "user",
+            content: [
+              ...toolResults,
+              {
+                type: "text" as const,
+                text:
+                  "You are making one tool call at a time, which is too slow. " +
+                  "Call ALL remaining tools in your NEXT response — batch every create/modify call into a single message. " +
+                  "For example, if you need 6 more connectors, call createConnector 6 times in one response.",
+              },
+            ],
+          });
+        } else {
+          messages.push({ role: "user", content: toolResults });
+        }
+      }
+
+      // Safety: if we exhausted MAX_TURNS, log it
+      if (allActions.length === 0) {
+        console.error(`[board-agent] Exhausted ${MAX_TURNS} turns with no actions for command: "${req.command}"`);
       }
 
       return {
