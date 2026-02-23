@@ -42,8 +42,6 @@ export function useAI() {
       try {
         const token = await user.getIdToken();
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60_000);
         const response = await fetch(`${FUNCTIONS_BASE}/boardAgent`, {
           method: "POST",
           headers: {
@@ -51,9 +49,7 @@ export function useAI() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ boardId, command, boardState }),
-          signal: controller.signal,
         });
-        clearTimeout(timeout);
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -78,11 +74,7 @@ export function useAI() {
         setLastCommandId((n) => n + 1);
       } catch (err) {
         const message =
-          err instanceof DOMException && err.name === "AbortError"
-            ? "Request timed out. Please try again."
-            : err instanceof Error
-              ? err.message
-              : "Failed to execute AI command.";
+          err instanceof Error ? err.message : "Failed to execute AI command.";
         setError(message);
       } finally {
         setIsLoading(false);
