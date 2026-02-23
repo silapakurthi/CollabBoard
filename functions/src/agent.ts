@@ -387,8 +387,8 @@ export async function runBoardAgent(req: AgentRequest): Promise<AgentResult> {
       // so even complex flowcharts should complete in 2-3 turns (create nodes → create connectors → done).
       // 8 turns is a generous safety margin. Going higher causes perceived "infinite loading".
       const MAX_TURNS = 8;
-      // Per-turn timeout: if a single LLM call takes longer than 30s, abort.
-      const PER_TURN_TIMEOUT_MS = 30_000;
+      // Per-turn timeout: if a single LLM call takes longer than 60s, abort.
+      const PER_TURN_TIMEOUT_MS = 60_000;
 
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         console.log(`[board-agent] Turn ${turn}/${MAX_TURNS}, command: "${req.command}", boardState objects: ${req.boardState.length}, actions so far: ${allActions.length}`);
