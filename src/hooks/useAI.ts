@@ -43,7 +43,7 @@ export function useAI() {
         const token = await user.getIdToken();
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 45_000);
+        const timeout = setTimeout(() => controller.abort(), 60_000);
         const response = await fetch(`${FUNCTIONS_BASE}/boardAgent`, {
           method: "POST",
           headers: {
